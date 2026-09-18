@@ -8,7 +8,6 @@
 </p>
 
 
-[![DOI](https://zenodo.org/badge/1007159095.svg)](https://doi.org/10.5281/zenodo.17016737)
 [![Docs](https://img.shields.io/badge/docs-available-brightgreen)](https://gridfm.github.io/gridfm-graphkit/)
 ![Coverage](https://img.shields.io/badge/coverage-83%25-yellowgreen)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12802/badge)](https://www.bestpractices.dev/projects/12802)
@@ -18,9 +17,40 @@
 
 This library is brought to you by the GridFM team to train, finetune and interact with a foundation model for the electric power grid.
 
+## Citation
+
+If you use `gridfm-graphkit` in your research, please cite:
+
+```bibtex
+@article{puech2026gencounifiedneural,
+  title={GENCO - A Unified Neural Solver Embedded in a Development Framework for Steady-State Grid Analysis},
+  author={Alban Puech and Matteo Mazzonelli and Tamara R. Govindasamy and Mangaliso Mngomezulu and Héctor Maeso-García and Thomas Tolhurst and Javad Bayazi and Ali Moeini and Naomi Simumba and Celia Cintas and David Nelischer and Romeo Kienzler and Jonas Weiss and Anna Varbella and Florian Dörfler and Gabriela Hug and Martin Mevissen and Juan Bernabé-Moreno and François Mirallès and Hendrik F. Hamann and Etienne Vos and Thomas Brunschwiler},
+  journal={arXiv preprint arXiv:2608.09921},
+  year={2026},
+  url={https://arxiv.org/abs/2608.09921}
+}
+```
+
+If you also used `gridfm-datakit`, please also cite:
+
+```bibtex
+@article{puech2025gridfmdatakitv1pythonlibraryscalable,
+  title={gridfm-datakit-v1: A Python Library for Scalable and Realistic Power Flow and Optimal Power Flow Data Generation},
+  author={Alban Puech and Matteo Mazzonelli and Celia Cintas and Tamara R. Govindasamy and Mangaliso Mngomezulu and Jonas Weiss and Matteo Baù and Anna Varbella and François Mirallès and Kibaek Kim and Le Xie and Hendrik F. Hamann and Etienne Vos and Thomas Brunschwiler},
+  journal={arXiv preprint arXiv:2512.14658},
+  year={2025},
+  url={https://arxiv.org/abs/2512.14658}
+}
+```
+
 ---
 
 # Installation
+
+> **Prefer Docker?** A ready-to-use [`Containerfile`](Containerfile) installs the latest
+> gridfm-datakit and gridfm-graphkit (plus the Julia toolchain) on a CPU-only PyTorch stack.
+> See [docs/install/docker.md](docs/install/docker.md) for a build + `datagen → train`
+> hello-world and VS Code Dev Container setup.
 
 Create and activate a virtual environment (make sure you use the right python version = 3.10, 3.11 or 3.12. I highly recommend 3.12)
 ```bash
@@ -104,6 +134,8 @@ gridfm_graphkit train --config path/to/config.yaml
 | `--profiler` | `str` | Enable Lightning profiler (`simple`, `advanced`, `pytorch`). | `None` |
 | `--compute_dc_ac_metrics` | `flag` | Compute ground-truth AC/DC power balance metrics on the test split. | `False` |
 | `--mp_context` | `str` | DataLoader multiprocessing start method (`spawn`, `fork`, `forkserver`). Defaults to PyTorch's automatic choice. On Linux, `spawn` is recommended for safety (CUDA + fork is unsafe); other choices emit a warning. | `None` |
+| `--config_conversion` | `str` | How to handle a config older than the required version (see [Config file versioning](#config-file-versioning)): `no` (fail with instructions), `auto_inline` (convert in memory), `auto_copy` (write an upgraded copy). | `no` |
+| `--converted_config_path` | `str` | Destination file for `--config_conversion auto_copy`. Defaults to a sibling `<config>.v<N>.yaml`. | `None` |
 ### Examples
 
 **Standard Training:**
@@ -111,6 +143,47 @@ gridfm_graphkit train --config path/to/config.yaml
 ```bash
 gridfm_graphkit train --config examples/config/case30_ieee_base.yaml --data_path examples/data
 ```
+
+---
+
+## Config file versioning
+
+Config files carry a top-level integer `version` key. The current schema version
+is **1** (`version: 1`); all shipped example configs are tagged accordingly.
+A config with **no** `version` key is treated as **v0** (the pre-versioning
+schema, before the configurable optimizer/scheduler landed in
+[#92](https://github.com/gridfm/gridfm-graphkit/pull/92)).
+
+**This version of gridfm-graphkit requires config version 1.** If you pass an
+older config, the CLI stops with instructions instead of silently mis-reading it.
+Choose how to migrate with `--config_conversion`:
+
+| Mode | Behaviour |
+| ---- | --------- |
+| `no` *(default)* | Fail with an explanation of the options. |
+| `auto_inline` | Convert to v1 in memory and run now; the file on disk is left unchanged. |
+| `auto_copy` | Convert, write an upgraded copy (`--converted_config_path`, or a derived `<config>.v1.yaml`), then run from it. |
+
+```bash
+# Migrate an old config in place in memory and train immediately
+gridfm_graphkit train --config old_v0.yaml --data_path data --config_conversion auto_inline
+
+# Or write an upgraded copy you can inspect and keep
+gridfm_graphkit train --config old_v0.yaml --data_path data \
+  --config_conversion auto_copy --converted_config_path config_v1.yaml
+```
+
+The **v0 → v1** conversion maps the old hard-coded `AdamW` + `ReduceLROnPlateau`
+optimizer block onto the explicit v1 schema:
+
+| v0 key | v1 location |
+| ------ | ----------- |
+| *(implicit AdamW)* | `optimizer.type: AdamW` |
+| `learning_rate` | `optimizer.learning_rate` |
+| `beta1`, `beta2` | `optimizer.optimizer_params.betas: [beta1, beta2]` |
+| *(implicit ReduceLROnPlateau, mode=min)* | `optimizer.scheduler_type` + `scheduler_params.mode: min` |
+| `lr_decay` | `optimizer.scheduler_params.factor` |
+| `lr_patience` | `optimizer.scheduler_params.patience` |
 
 ---
 
