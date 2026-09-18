@@ -2,6 +2,7 @@
 
 Thank you for your interest in contributing to GridFM. This document explains our contribution process and procedures:
 
+* [Scope: What Belongs in This Repository](#Scope-What-Belongs-in-This-Repository)
 * [How to Contribute a Bug Fix or Change](#How-to-Contribute-a-Bug-Fix-or-Change)
 * [Running the Integration Tests](#Running-the-Integration-Tests)
 * [Development Workflow](#Development-Workflow)
@@ -10,6 +11,28 @@ Thank you for your interest in contributing to GridFM. This document explains ou
 For a description of the roles and responsibilities of the various members of the GridFM community, see the [governance policies], and for further details, see the project's [Technical Charter]. Briefly, Contributors are anyone who submits content to the project, Committers review and approve such submissions, and the Technical Steering Committee provides general project oversight.
 
 If you just need help or have a question, refer to [SUPPORT.md](SUPPORT.md).
+
+## Scope: What Belongs in This Repository
+
+`gridfm-graphkit` is a **library** for training, finetuning, and interacting with a
+foundation model for the electric power grid. Contributions that extend or improve
+this core belong here — for example:
+
+* Model architectures, layers, and loss functions.
+* Training, finetuning, and evaluation logic.
+* Data loading, transforms, and shared utilities.
+* Bug fixes, performance improvements, tests, and documentation for the above.
+
+**Application-specific contributions belong in a companion GridFM applications
+repository, not here.** If your contribution is an end-to-end application, a
+deployment, or a pipeline/notebook/experiment tied to one specific use case or
+study, please contribute it to the relevant GridFM applications repository instead
+of adding it to the core library. Keeping application-specific code out of the core
+keeps this library focused, broadly reusable, and free of use-case-specific
+dependencies.
+
+If you are unsure whether a contribution is "core" or "application-specific", open
+an issue to discuss it before starting work.
 
 ## How to Contribute a Bug Fix or Change
 
@@ -109,28 +132,56 @@ pytest integrationtests --calibrate -s
 Before opening a PR, make sure you complete all steps:
 
 ### 1. Development setup
-- [ ] Install dev and test dependencies:
+
+- [ ] Install dev, test, and torch-scatter dependencies.
+
+  `torch-scatter` is not on PyPI — it needs a prebuilt wheel from `data.pyg.org`
+  that matches **both** your PyTorch version and your compute backend. Pick the
+  right `CUDA_TAG` from the table below:
+
+  | Hardware | `CUDA_TAG` |
+  |----------|-----------|
+  | CPU only | `cpu` |
+  | CUDA 11.8 | `cu118` |
+  | CUDA 12.1 | `cu121` |
+  | CUDA 12.6 | `cu126` |
+
+  Not sure which tag to use? If you don't have an NVIDIA GPU (including Apple
+  Silicon and CPU-only machines), use `cpu`. For NVIDIA GPUs, check your CUDA
+  version with `nvidia-smi` (top-right corner) or `nvcc --version`.
+
+  Replace `<CUDA_TAG>` in the command below:
+
   ```bash
-  pip install -e ".[dev,test]"
+  pip install -e ".[dev,test]" \
+      --find-links https://data.pyg.org/whl/torch-2.12.0+<CUDA_TAG>.html
   ```
 
-* [ ] Install `torch-scatter` and `torch-sparse` separately (the correct wheel depends on your PyTorch and CUDA versions):
+  For example, CPU-only:
   ```bash
-  TORCH_CUDA_VERSION=$(python -c "import torch; print(torch.__version__ + ('+cpu' if torch.version.cuda is None else ''))")
-  pip install torch-scatter -f https://data.pyg.org/whl/torch-${TORCH_CUDA_VERSION}.html
-  pip install torch-sparse -f https://data.pyg.org/whl/torch-${TORCH_CUDA_VERSION}.html
+  pip install -e ".[dev,test]" \
+      --find-links https://data.pyg.org/whl/torch-2.12.0+cpu.html
   ```
 
-  If `data.pyg.org` has no prebuilt wheel for your PyTorch version, build from source instead (this
-  compiles against your installed torch, so it works with any version):
+  Or CUDA 12.6:
   ```bash
+  pip install -e ".[dev,test]" \
+      --find-links https://data.pyg.org/whl/torch-2.12.0+cu126.html
+  ```
+  > **Note:** The PyTorch version (`2.12.0`) in the URL must match what is
+  > installed. If you change the `torch` pin in `pyproject.toml`, update this
+  > URL and regenerate the lock file with `uv lock`.
+
+  **No prebuilt wheel for your combination?** If `data.pyg.org` has no prebuilt wheel for your combination, build from source instead. This compiles against your installed torch, so it works with any version — but torch must already be installed first:
+  ```bash
+  pip install torch==2.12.0
   pip install torch-scatter torch-sparse --no-build-isolation
   ```
   Building from source requires a C++ compiler (and a matching CUDA toolkit with
   `nvcc` for GPU builds).
 
 * [ ] Install the git hooks (this repo runs pre-commit hooks at the **pre-push** stage):
-  ```bash
+  ```pipbash
   pre-commit install
   ```
 

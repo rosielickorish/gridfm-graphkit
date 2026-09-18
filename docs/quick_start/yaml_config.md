@@ -132,6 +132,18 @@ Optional path to precomputed split files. When provided:
 - `data.scenarios` is ignored for split construction,
 - do **not** combine with `split_by_load_scenario_idx: true`.
 
+### `data.stream_partitions`
+
+Controls whether `process()` reads raw parquet data partition-by-partition (streaming) or all at once (legacy). Activated automatically when raw parquet is laid out as Hive partitions (`scenario_partition=<n>/` subdirectories).
+
+- `auto` (default): stream if Hive partitions are detected for all three tables (bus, gen, branch), otherwise fall back to the legacy flat-file path.
+- `on`: require Hive partitions; raises `RuntimeError` with a clear message if the raw directory is flat.
+- `off`: force the legacy flat-file path even if partitions exist.
+
+**Data layout requirements for streaming:** all three tables must expose the same set of `scenario_partition` values, and every scenario's rows must be fully contained within a single partition. Violations are caught early with a clear error.
+
+The CLI flag `--stream-partitions` overrides this YAML value.
+
 ## `model` section
 
 Current configs use the heterogeneous GNS model:
@@ -181,6 +193,28 @@ Common `loss_args` patterns:
 - `LayeredWeightedPhysics`: `{base_weight: <float>}`
 - `LossPerDim`: `{dim: VM|VA|P_in|Q_in, loss_str: MAE|MSE}`
 - `MaskedGenMSE`, `MaskedBusMSE`, `QgViolationPenalty`, `MaskedMSE`, `MSE`: `{}`
+
+### Physics loss warmup
+
+- `physics_warmup_epochs`: number of epochs over which the weight of every
+  `LayeredWeightedPhysics` term ramps linearly up to its value in `loss_weights`,
+  instead of being applied at full strength from the first epoch. The weight at
+  epoch `e` (0-indexed) is `loss_weight * min(1, (e + 1) / physics_warmup_epochs)`,
+  so it reaches its target on the last warmup epoch. Defaults to `0`, which
+  disables the ramp and keeps all weights constant.
+
+Ramping the physics term in is useful when it dominates the gradient early in
+training, before the supervised reconstruction terms have settled:
+
+```yaml
+training:
+  losses: [LayeredWeightedPhysics, MaskedBusMSE]
+  loss_weights: [0.2, 0.8]
+  loss_args:
+  - base_weight: 0.5
+  - {}
+  physics_warmup_epochs: 20
+```
 
 ---
 
